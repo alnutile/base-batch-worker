@@ -1,0 +1,236 @@
+{
+  "Outputs": {
+    "KeyForWorkerUser": {
+      "Description": "Key to help the worker talk to other resources",
+      "Value": { "Ref": "UserAccessKey" }
+    },
+    "SecretKeyForWorkerUser": {
+      "Description": "Secret to help the worker talk to other resources",
+      "Value": {
+        "Fn::GetAtt": [
+          "UserAccessKey",
+          "SecretAccessKey"
+        ]
+      }
+    }
+  },
+  "Parameters":
+  {
+    "AppName": {
+      "Description": "Helps to fill in dynamic naming, all lowercase, one word, alpha only",
+      "Type": "String"
+    },
+    "ComputeEnvironmentName": {
+      "Default": " arn:aws:batch:eu-west-1:364215618558:compute-environment/smartbatches-production",
+      "Description": "This is the compute ARN you will be putting your jobs on.",
+      "Type": "String"
+    },
+    "AppEnv": {
+       "AllowedValues": [
+         "production",
+         "dev",
+         "staging"
+       ],
+       "Default": "dev",
+       "Type": "String",
+       "Description": "Set the AppEnv and naming pattern on resources. We need dev for legacy reasons"
+     },
+    "IncomingsToken": {
+      "Default": "foobar",
+      "Description": "Nice to have",
+      "Type": "String"
+    }
+  },
+  "Resources": {
+    "UserAccessKey": {
+      "Type": "AWS::IAM::AccessKey",
+      "Properties": {
+        "UserName": {
+          "Ref": "AppUser"
+        }
+      },
+      "DependsOn": [
+        "AppUser"
+      ]
+    },
+    "ECR": {
+      "Type" : "AWS::ECR::Repository",
+      "Properties" : {
+        "RepositoryName" : { "Fn::Sub": "${AppName}"}
+      }
+    },
+    "AppUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "UserName": {
+          "Fn::Join": [
+            "-",
+            [
+              "svc",
+              {
+                "Ref": "AppName"
+              },
+              "worker",
+              {
+                "Ref": "AppEnv"
+              }
+            ]
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": {
+              "Fn::Join": [
+                "-",
+                [
+                  {
+                    "Ref": "AppName"
+                  },
+                  "batch",
+                  {
+                    "Ref": "AppEnv"
+                  }
+                ]
+              ]
+            },
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "Stmt1504442422000",
+                  "Effect": "Allow",
+                  "Action": [
+                    "batch:CancelJob",
+                    "batch:DescribeComputeEnvironments",
+                    "batch:DescribeJobDefinitions",
+                    "batch:DescribeJobQueues",
+                    "batch:DescribeJobs",
+                    "batch:ListJobs",
+                    "batch:SubmitJob",
+                    "batch:TerminateJob",
+                    "batch:UpdateJobQueue"
+                  ],
+                  "Resource": [
+                    "*"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "PolicyName": {
+              "Fn::Join": [
+                "-",
+                [
+                  {
+                    "Ref": "AppName"
+                  },
+                  "ecr-permissions",
+                  {
+                    "Ref": "AppEnv"
+                  }
+                ]
+              ]
+            },
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "Stmt1503864450001",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:GetAuthorizationToken"
+                  ],
+                  "Resource": [
+                    "*"
+                  ]
+                },
+                {
+                  "Sid": "Stmt1503864450000",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:GetAuthorizationToken",
+                    "ecr:UploadLayerPart",
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:BatchGetImage",
+                    "ecr:CompleteLayerUpload",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:GetRepositoryPolicy",
+                    "ecr:InitiateLayerUpload",
+                    "ecr:ListImages",
+                    "ecr:PutImage",
+                    "ecr:UploadLayerPart"
+                  ],
+                  "Resource": [
+                    { "Fn::Sub": "arn:aws:ecr:eu-west-1:364215618558:repository/${AppName}"}
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "JobDefinition": {
+       "Type": "AWS::Batch::JobDefinition",
+       "DependsOn": [
+         "AppUser",
+         "ECR"
+       ],
+       "Properties": {
+         "Type": "container",
+         "JobDefinitionName": { "Fn::Sub": "${AppName}-${AppEnv}" },
+         "RetryStrategy": { "Attempts": 1 },
+         "ContainerProperties": {
+           "Vcpus": 1,
+           "Image": {"Fn::Sub": "364215618558.dkr.ecr.eu-west-1.amazonaws.com/${AppName}:latest"},
+           "Memory": 500,
+           "Environment": [
+             {
+               "Name": "AWS_REGION",
+               "Value": "eu-west-1"
+             },
+             {
+               "Name": "APP_ENV",
+               "Value": { "Ref": "AppEnv" }
+             },
+             {
+               "Name": "INCOMINGS_URL",
+               "Value": "https://post.incomings.io"
+             },
+             {
+               "Name": "AWS_DEFAULT_REGION",
+               "Value": "eu-west-1"
+             },
+             {
+               "Name": "INCOMINGS_TOKEN",
+               "Value": { "Ref": "IncomingsToken" }
+             },
+             {
+               "Name": "AWS_SECRET_ACCESS_KEY",
+               "Value": {"Fn::GetAtt": ["UserAccessKey", "SecretAccessKey"]}
+             },
+             {
+               "Name": "AWS_ACCESS_KEY_ID",
+               "Value": { "Ref": "UserAccessKey" }
+             }
+           ]
+         }
+       }
+     },
+    "JobQueue": {
+      "Type": "AWS::Batch::JobQueue",
+      "Properties": {
+        "JobQueueName": { "Fn::Sub": "${AppName}-job_queue-${AppEnv}" },
+        "Priority": 10,
+        "ComputeEnvironmentOrder": [
+          {
+            "ComputeEnvironment": { "Fn::Sub": "${ComputeEnvironmentName}" },
+            "Order": 1
+          }
+        ]
+      }
+    }
+  }
+}
