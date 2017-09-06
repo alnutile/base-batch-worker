@@ -43,16 +43,16 @@ composer config -g github-oauth.github.com $GITHUB_TOKEN && composer install --n
 ## http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
 ## and switching as needed export AWS_PROFILE=det
 
-export AWS_PROFILE=securityscanner
+export AWS_PROFILE=WORKER_CODE_NAME
 eval $(aws ecr get-login --no-include-email --region eu-west-1)
 # Build the Docker image with latest code
 cd $DIR/app
 docker build \
-    -t securityscanner .
-docker tag securityscanner:latest 364215618558.dkr.ecr.eu-west-1.amazonaws.com/securityscanner:latest
-docker tag securityscanner:latest 364215618558.dkr.ecr.eu-west-1.amazonaws.com/securityscanner:$HASH
-docker push 364215618558.dkr.ecr.eu-west-1.amazonaws.com/securityscanner:latest
-docker push 364215618558.dkr.ecr.eu-west-1.amazonaws.com/securityscanner:$HASH
+    -t WORKER_CODE_NAME .
+docker tag WORKER_CODE_NAME:latest 364215618558.dkr.ecr.eu-west-1.amazonaws.com/WORKER_CODE_NAME:latest
+docker tag WORKER_CODE_NAME:latest 364215618558.dkr.ecr.eu-west-1.amazonaws.com/WORKER_CODE_NAME:$HASH
+docker push 364215618558.dkr.ecr.eu-west-1.amazonaws.com/WORKER_CODE_NAME:latest
+docker push 364215618558.dkr.ecr.eu-west-1.amazonaws.com/WORKER_CODE_NAME:$HASH
 # Clean up packaged directory
 cd $DIR/app/packaged
 PWD=$(pwd)
